@@ -23,6 +23,8 @@ logging.basicConfig(level=logging.INFO)
 def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
     """
     Downloads YouTube video, uploads to Azure VI, and extracts insights.
+    Uploads to the azure video indexer.
+    extracts the insights
     """
     video_url = state.get("video_url")
     video_id_input = state.get("video_id", "vid_demo")
@@ -85,12 +87,16 @@ def audit_content_node(state: VideoAuditState) -> Dict[str, Any]:
     # Initialize Clients
     llm = AzureChatOpenAI(
         azure_deployment=os.getenv("AZURE_OPENAI_CHAT_DEPLOYMENT"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
+        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
         openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
         temperature=0.0
     )
 
     embeddings = AzureOpenAIEmbeddings(
-        azure_deployment="text-embedding-3-small",
+        azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDING_DEPLOYMENT", "text-embedding-3-small-2"),
+        azure_endpoint=os.getenv("AZURE_OPENAI_EMBEDDING_ENDPOINT"),
+        api_key=os.getenv("AZURE_OPENAI_EMBEDDING_API_KEY"),
         openai_api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
     )
 
