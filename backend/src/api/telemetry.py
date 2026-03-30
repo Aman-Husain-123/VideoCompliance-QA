@@ -59,3 +59,19 @@ def setup_telemetry():
         # 
         logger.error(f"Failed to initialize Azure Monitor: {e}")
         # Note: Function doesn't raise the error - telemetry failure shouldn't crash the app
+
+
+
+
+
+'''
+Why do we use telemetry ?
+
+Without :
+API is slow -> No idea which part
+How many users today ? No visibility
+
+/audit endpoint averages 4.5 s (Indexer takes 3.8 s)
+Error logs show : 12% of audits fsil due to Youtube download errors
+Metrics show : 450 API calls today , 89% success rate
+'''

@@ -20,6 +20,8 @@ logger = logging.getLogger("brand-guardian")
 logging.basicConfig(level=logging.INFO)
 
 # --- NODE 1: THE INDEXER ---
+# Function responsible for converting video to text
+# Takes the current state as video URL
 def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
     """
     Downloads YouTube video, uploads to Azure VI, and extracts insights.
@@ -27,30 +29,42 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
     extracts the insights
     """
     video_url = state.get("video_url")
-    video_id_input = state.get("video_id", "vid_demo")
     
-    logger.info(f"--- [Node: Indexer] Processing: {video_url} ---")
+    # --- OPTIMIZATION: Extract Unique ID from URL ---
+    # This ensures we don't re-upload the same video twice.
+    yt_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", video_url)
+    yt_id = yt_id_match.group(1) if yt_id_match else "unknown_vid"
+    video_name = f"yt_{yt_id}"
     
-    local_filename = "temp_audit_video.mp4"
+    logger.info(f"--- [Node: Indexer] Processing: {video_url} (ID: {yt_id}) ---")
+    
+    local_filename = f"temp_{yt_id}.mp4"
     
     try:
         vi_service = VideoIndexerService()
         
-        # 1. DOWNLOAD
-        if "youtube.com" in video_url or "youtu.be" in video_url:
-            local_path = vi_service.download_youtube_video(video_url, output_path=local_filename)
-        else:
-            raise Exception("Please provide a valid YouTube URL for this test.")
-
-        # 2. UPLOAD
-        azure_video_id = vi_service.upload_video(local_path, video_name=video_id_input)
-        logger.info(f"Upload Success. Azure ID: {azure_video_id}")
+        # 1. CHECK CACHE (Is this video already indexed?)
+        existing_azure_id = vi_service.find_video_by_name(video_name)
         
-        # 3. CLEANUP
-        if os.path.exists(local_path):
-            os.remove(local_path)
+        if existing_azure_id:
+            logger.info(f"🚀 Optimization: Video already exists in Azure (ID: {existing_azure_id}). Skipping Upload.")
+            azure_video_id = existing_azure_id
+        else:
+            # 2. DOWNLOAD (Only if not in Azure)
+            if "youtube.com" in video_url or "youtu.be" in video_url:
+                local_path = vi_service.download_youtube_video(video_url, output_path=local_filename)
+            else:
+                raise Exception("Please provide a valid YouTube URL.")
 
-        # 4. WAIT
+            # 3. UPLOAD
+            azure_video_id = vi_service.upload_video(local_path, video_name=video_name)
+            logger.info(f"Upload Success. Azure ID: {azure_video_id}")
+            
+            # 4. CLEANUP
+            if os.path.exists(local_path):
+                os.remove(local_path)
+
+        # 4. WAIT/FETCH (Returns immediately if already 'Processed')
         raw_insights = vi_service.wait_for_processing(azure_video_id)
         
         # 5. EXTRACT
@@ -69,6 +83,7 @@ def index_video_node(state: VideoAuditState) -> Dict[str, Any]:
         }
 
 # --- NODE 2: THE COMPLIANCE AUDITOR ---
+# AI to judge the content based on the rules
 def audit_content_node(state: VideoAuditState) -> Dict[str, Any]:
     """
     Performs Retrieval-Augmented Generation (RAG) to audit the content.

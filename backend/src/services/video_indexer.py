@@ -94,9 +94,29 @@ class VideoIndexerService:
             
         return response.json().get("id")
 
+    # --- NEW: Get Video by Name ---
+    def find_video_by_name(self, name):
+        """Checks if a video with this name already exists in the account."""
+        arm_token = self.get_access_token()
+        vi_token = self.get_account_token(arm_token)
+
+        url = f"https://api.videoindexer.ai/{self.location}/Accounts/{self.account_id}/Videos"
+        params = {
+            "accessToken": vi_token,
+            "name": name # Filter by name
+        }
+        
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            results = response.json().get("results", [])
+            for res in results:
+                if res.get("name") == name:
+                    return res.get("id")
+        return None
+
     def wait_for_processing(self, video_id):
         """Polls status until complete."""
-        logger.info(f"Waiting for video {video_id} to process...")
+        logger.info(f"Checking status for video {video_id}...")
         while True:
             arm_token = self.get_access_token()
             vi_token = self.get_account_token(arm_token)
@@ -108,14 +128,15 @@ class VideoIndexerService:
             
             state = data.get("state")
             if state == "Processed":
+                logger.info(f"Video {video_id} is ready.")
                 return data
             elif state == "Failed":
                 raise Exception("Video Indexing Failed in Azure.")
             elif state == "Quarantined":
                 raise Exception("Video Quarantined (Copyright/Content Policy Violation).")
             
-            logger.info(f"Status: {state}... waiting 30s")
-            time.sleep(30)
+            logger.info(f"Status: {state}... waiting 15s")
+            time.sleep(15) # Reduced wait time for responsiveness
 
     def extract_data(self, vi_json):
         """Parses the JSON into our State format."""
@@ -134,6 +155,7 @@ class VideoIndexerService:
             "ocr_text": ocr_lines,
             "video_metadata": {
                 "duration": vi_json.get("summarizedInsights", {}).get("duration", {}).get("seconds"),
-                "platform": "youtube"
+                "platform": "youtube",
+                "azure_id": vi_json.get("id")
             }
         }
